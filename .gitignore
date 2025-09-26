@@ -1,0 +1,9 @@
+# Compilados
+*.o
+server
+*.exe
+*.out
+
+# Archivos de logs
+*.log
+log.txt
