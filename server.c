@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <time.h>
 #include <string.h>
+#include <errno.h>
 
 #define MAX_CLIENTS 100
 
@@ -15,6 +16,8 @@ static int client_count = 0;
 static pthread_mutex_t clients_mutex = PTHREAD_MUTEX_INITIALIZER;
 float speed_offset = 0;
 int direction_state = 0;
+int battery_level = 100;
+int temp_c = 30;
 
 // Agregar cliente
 void add_client(struct client_data *client) {
