@@ -74,28 +74,32 @@ static void handle_command_admin(struct client_data *data, const char *line) {
     if (strcmp(up, "SPEED UP")==0) {
         speed_offset += 1.0f;
         if (speed_offset < 0) speed_offset = 0;
-        send_line(data->socket_fd, "OK");
+        send_line(data->socket_fd, "OK\n");
+        log_user_action(data->username, data->role, "SPEED UP", "speed_offset increased");
         return;
     }
 
     // TURN LEFT (existente)
     if (strcmp(up, "TURN LEFT")==0) {
         direction_state = 1;
-        send_line(data->socket_fd, "OK");
+        send_line(data->socket_fd, "OK\n");
+        log_user_action(data->username, data->role, "TURN LEFT", "direction changed to LEFT");
         return;
     }
 
     // NUEVO: TURN RIGHT
     if (strcmp(up, "TURN RIGHT")==0) {
         direction_state = 2;
-        send_line(data->socket_fd, "OK");
+        send_line(data->socket_fd, "OK\n");
+        log_user_action(data->username, data->role, "TURN RIGHT", "direction changed to RIGHT");
         return;
     }
 
     // NUEVO: BATTERY RESET
     if (strcmp(up, "BATTERY RESET")==0) {
         battery_level = 100;
-        send_line(data->socket_fd, "OK");
+        send_line(data->socket_fd, "OK\n");
+        log_user_action(data->username, data->role, "BATTERY RESET", "battery level reset to 100%");
         return;
     }
 
@@ -103,13 +107,14 @@ static void handle_command_admin(struct client_data *data, const char *line) {
     if (strcmp(up, "STATUS")==0) {
         char out[128];
         int speed_int = (int)(speed_offset); // modelo simple
-        snprintf(out, sizeof(out), "STATUS speed=%d battery=%d dir=%s temp=%d",
+        snprintf(out, sizeof(out), "STATUS speed=%d battery=%d dir=%s temp=%d\n",
                  speed_int, battery_level, dir_to_str(direction_state), temp_c);
         send_line(data->socket_fd, out);
+        log_user_action(data->username, data->role, "STATUS", "requested vehicle status");
         return;
     }
 
-    send_line(data->socket_fd, "ERR unknown_cmd");
+    send_line(data->socket_fd, "ERR unknown_cmd\n");
 }
 
 // Procesa UNA línea completa (sin \r\n) usando tu lógica existente
@@ -124,7 +129,7 @@ static void process_line(struct client_data *data, const char *line_in) {
     if (!data->authenticated) {
         time_t now = time(NULL);
         if (data->locked && (data->locked_until == 0 || now < data->locked_until)) {
-            send_line(client_fd, "ERR locked");
+            send_line(client_fd, "ERR locked\n");
             return;
         } else if (data->locked && now >= data->locked_until) {
             data->locked = 0;
@@ -133,7 +138,7 @@ static void process_line(struct client_data *data, const char *line_in) {
 
         char role[16], user[64], pass[64];
         if (!parse_login(buffer, role, sizeof(role), user, sizeof(user), pass, sizeof(pass))) {
-            send_line(client_fd, "ERR need_login");
+            send_line(client_fd, "ERR need_login\n");
             return;
         }
 
@@ -143,10 +148,10 @@ static void process_line(struct client_data *data, const char *line_in) {
             if (data->failed_attempts >= MAX_FAILED_ATTEMPTS) {
                 data->locked = 1;
                 data->locked_until = time(NULL) + LOCK_SECONDS;
-                send_line(client_fd, "ERR locked");
+                send_line(client_fd, "ERR locked\n");
             } else {
                 char msg[64];
-                snprintf(msg, sizeof(msg), "ERR invalid (%d/%d)", data->failed_attempts, MAX_FAILED_ATTEMPTS);
+                snprintf(msg, sizeof(msg), "ERR invalid (%d/%d)\n", data->failed_attempts, MAX_FAILED_ATTEMPTS);
                 send_line(client_fd, msg);
             }
             return;
@@ -156,7 +161,13 @@ static void process_line(struct client_data *data, const char *line_in) {
         data->authenticated = 1;
         strncpy(data->role, role, sizeof(data->role)-1);
         strncpy(data->username, user, sizeof(data->username)-1);
-        send_line(client_fd, "OK");
+        send_line(client_fd, "OK\n");
+        
+        // Log successful authentication
+        char client_ip[INET_ADDRSTRLEN];
+        inet_ntop(AF_INET, &(data->addr.sin_addr), client_ip, INET_ADDRSTRLEN);
+        int client_port = ntohs(data->addr.sin_port);
+        log_connection_event("LOGIN_SUCCESS", user, role, client_ip, client_port);
         return;
     }
 
@@ -170,11 +181,12 @@ static void process_line(struct client_data *data, const char *line_in) {
     if (strcasecmp(buffer, "STATUS")==0) {
         char out[128];
         int speed_int = (int)(speed_offset);
-        snprintf(out, sizeof(out), "STATUS speed=%d battery=%d dir=%s temp=%d",
+        snprintf(out, sizeof(out), "STATUS speed=%d battery=%d dir=%s temp=%d\n",
                  speed_int, battery_level, dir_to_str(direction_state), temp_c);
         send_line(data->socket_fd, out);
+        log_user_action(data->username, data->role, "STATUS", "requested vehicle status");
     } else {
-        send_line(client_fd, "ERR observer_only");
+        send_line(client_fd, "ERR observer_only\n");
     }
 }
 
@@ -190,7 +202,11 @@ void *handle_client(void *arg) {
     data->role[0] = 0;
     data->username[0] = 0;
 
-    log_event("[CLIENT %d] Conectado\n", client_fd);
+    // Log initial connection
+    char client_ip[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &(data->addr.sin_addr), client_ip, INET_ADDRSTRLEN);
+    int client_port = ntohs(data->addr.sin_port);
+    log_connection_event("CONNECT", "unknown", "NONE", client_ip, client_port);
 
     // Acumulador de entrada por líneas
     char inbuf[4096];
@@ -199,7 +215,15 @@ void *handle_client(void *arg) {
     while (data->active) {
         char chunk[1024];
         int n = recv(client_fd, chunk, sizeof(chunk), 0);
-        if (n <= 0) break;
+        if (n <= 0) {
+            // Client disconnected
+            if (data->authenticated) {
+                log_connection_event("DISCONNECT", data->username, data->role, client_ip, client_port);
+            } else {
+                log_connection_event("DISCONNECT", "unknown", "NONE", client_ip, client_port);
+            }
+            break;
+        }
 
         // Acumular el chunk recibido
         if (ilen + (size_t)n >= sizeof(inbuf)) {
@@ -236,6 +260,10 @@ void *handle_client(void *arg) {
     }
 
 
+    // Mark client as inactive and remove from server list
+    data->active = 0;
+    remove_client(data);
+    
     log_event("[CLIENT %d] Desconectado\n", client_fd);
     close(client_fd);
     free(data);
