@@ -1,0 +1,7 @@
+{
+  "users": [
+    { "role": "ADMIN", "username": "root", "password": "password" },
+    { "role": "OBSERVER", "username": "juan", "password": "12345" },
+    { "role": "OBSERVER", "username": "ana", "password": "abcd" }
+  ]
+}

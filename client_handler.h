@@ -3,6 +3,7 @@
 
 #include <netinet/in.h>
 #include <time.h>
+#include "config.h"
 
 struct client_data {
     int socket_fd;

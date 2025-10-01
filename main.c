@@ -14,6 +14,11 @@ int main(int argc, char *argv[]) {
 
     init_logger(log_filename);
 
+    if (load_config("config.json") != 0) {
+    fprintf(stderr, "Error cargando config.json\n");
+    exit(EXIT_FAILURE);
+    }
+
     start_server(port);
 
     close_logger();

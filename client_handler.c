@@ -9,6 +9,10 @@
 #include <arpa/inet.h>
 #include <ctype.h>
 #include <time.h>
+#include <strings.h>
+#include <errno.h>
+#include <sys/time.h>
+
 
 #define BUFFER_SIZE 512
 #define MAX_FAILED_ATTEMPTS 3
@@ -193,6 +197,7 @@ static void process_line(struct client_data *data, const char *line_in) {
 void *handle_client(void *arg) {
     struct client_data *data = (struct client_data *)arg;
     const int client_fd = data->socket_fd;
+    struct timeval timeout;
 
     data->authenticated = 0;
     data->active = 1;
@@ -201,6 +206,10 @@ void *handle_client(void *arg) {
     data->locked_until = 0;
     data->role[0] = 0;
     data->username[0] = 0;
+    timeout.tv_sec = 120;
+    timeout.tv_usec = 0;
+    
+    setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout));
 
     // Log initial connection
     char client_ip[INET_ADDRSTRLEN];
@@ -215,12 +224,22 @@ void *handle_client(void *arg) {
     while (data->active) {
         char chunk[1024];
         int n = recv(client_fd, chunk, sizeof(chunk), 0);
-        if (n <= 0) {
-            // Client disconnected
-            if (data->authenticated) {
-                log_connection_event("DISCONNECT", data->username, data->role, client_ip, client_port);
+        if (n == 0) {
+            // desconexión remota limpia
+            // (log y break como ya tienes)
+            break;
+        } else if (n < 0) {
+            // Timeout o error
+            if (errno == EAGAIN || errno == EWOULDBLOCK
+        #ifdef ETIMEDOUT
+                || errno == ETIMEDOUT
+        #endif
+            ) {
+                send_line(client_fd, "ERR timeout");
+                log_connection_event("TIMEOUT", data->username, data->role, client_ip, client_port);
             } else {
-                log_connection_event("DISCONNECT", "unknown", "NONE", client_ip, client_port);
+                perror("recv");
+                log_connection_event("RECV_ERROR", data->username, data->role, client_ip, client_port);
             }
             break;
         }

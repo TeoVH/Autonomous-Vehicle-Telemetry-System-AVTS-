@@ -6,7 +6,8 @@
 void start_server(int port);
 void remove_client(struct client_data *client);
 void add_client(struct client_data *client);
-void *telemetry_thread(void *arg);
+static void *telemetry_thread(void *arg);
+static void handle_sigint(int sig);
 
 extern float speed_offset;
 extern int direction_state;
