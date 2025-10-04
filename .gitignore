@@ -1,10 +1,13 @@
-# Compilados
-*.o
-server
-*.exe
-*.out
-
-# Archivos de logs
+# Maven / Java
+target/
+**/target/
+*.class
 *.log
-log.txt
+*.iml
+.idea/
 .vscode/
+.DS_Store
+
+# Build/OS
+*.swp
+Thumbs.db
