@@ -1,0 +1,16 @@
+{
+  "users": [
+    {
+      "role": "ADMIN",
+      "username": "root",
+      "salt": "c20efd8d3a1bbeb7a6645513d5b51b392974ba538b941c27bef5daaab2af5aff",
+      "hash": "f0c6b39b2414f78e271b2933ca97aa782633e1108de23b935f84398ed9967972"
+    },
+    {
+      "role": "OBSERVER",
+      "username": "juan",
+      "salt": "04616e7fec14a85267564785c375f605cccaf09d7b697b8b6093a642beadf358",
+      "hash": "b32299198dc0dbc43cd0f2f243c79ba697ed372d37704ba5db01d62a9cfc7e94"
+    }
+  ]
+}

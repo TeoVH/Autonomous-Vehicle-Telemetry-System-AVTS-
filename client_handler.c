@@ -1,159 +1,292 @@
 #include "client_handler.h"
 #include "logger.h"
+#include "server.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
-#include "server.h"
-#include <openssl/sha.h>   // Para hash SHA256
+#include <ctype.h>
+#include <time.h>
+#include <strings.h>
+#include <errno.h>
+#include <sys/time.h>
 
-#define BUFFER_SIZE 256
 
-// Usuarios permitidos (ejemplo de demo)
-struct user_entry {
-    const char *username;
-    const char *role;
-    const char *password_hash; // SHA256 en hex
-};
+#define BUFFER_SIZE 512
+#define MAX_FAILED_ATTEMPTS 3
+#define LOCK_SECONDS 300 // 5 minutos
 
-static struct user_entry users[] = {
-    {"root", "ADMIN",    "5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8"}, // "password"
-    {"juan", "OBSERVER", "5994471abb01112afcc18159f6cc74b4f511b99806da59b3caf5a9c173cacfc5"}, // "12345"
-};
-static int user_count = 2;
-
-// Convierte binario -> hex
-void to_hex(unsigned char *hash, char *output) {
-    for (int i = 0; i < SHA256_DIGEST_LENGTH; i++) {
-        sprintf(output + (i * 2), "%02x", hash[i]);
-    }
-    output[64] = '\0';
+static void trim_crlf(char *s) {
+    size_t n = strlen(s);
+    while (n>0 && (s[n-1]=='\r' || s[n-1]=='\n')) { s[--n]=0; }
 }
 
-// Función para verificar credenciales
-int check_credentials(const char *username, const char *role, const char *password) {
-    unsigned char hash[SHA256_DIGEST_LENGTH];
-    char hash_hex[65];
+static void to_upper(char *s) {
+    for (; *s; ++s) *s = (char)toupper((unsigned char)*s);
+}
 
-    SHA256((unsigned char *)password, strlen(password), hash);
-    to_hex(hash, hash_hex);
+static void send_line(int fd, const char *line) {
+    send(fd, line, (int)strlen(line), 0);
+    send(fd, "\n", 1, 0);
+}
 
-    for (int i = 0; i < user_count; i++) {
-        if (strcmp(users[i].username, username) == 0 &&
-            strcmp(users[i].role, role) == 0 &&
-            strcmp(users[i].password_hash, hash_hex) == 0) {
-            return 1; // válido
-        }
+static int parse_login(const char *line, char *role, size_t role_sz,
+                       char *user, size_t user_sz, char *pass, size_t pass_sz) {
+    // Esperado: LOGIN <ROLE> <user> <pass>
+    char cmd[16]={0}, rbuf[32]={0}, ubuf[64]={0}, pbuf[64]={0};
+    int n = sscanf(line, "%15s %31s %63s %63s", cmd, rbuf, ubuf, pbuf);
+    if (n != 4) return 0;
+    for (char *p=cmd; *p; ++p) *p=(char)toupper(*p);
+    if (strcmp(cmd, "LOGIN")!=0) return 0;
+    for (char *p=rbuf; *p; ++p) *p=(char)toupper(*p);
+    snprintf(role, role_sz, "%s", rbuf);
+    snprintf(user, user_sz, "%s", ubuf);
+    snprintf(pass, pass_sz, "%s", pbuf);
+    return 1;
+}
+
+static int authenticate(const char *role, const char *user, const char *pass) {
+    // TODO: Reemplaza con tu verificación real si la tienes (hash, db, etc.)
+    if (strcmp(role, "ADMIN")==0) {
+        return (strcmp(user,"root")==0 && strcmp(pass,"password")==0);
+    } else if (strcmp(role, "OBSERVER")==0) {
+        return (strcmp(user,"juan")==0 && strcmp(pass,"12345")==0);
     }
-    return 0; // no válido
+    return 0;
+}
+
+static const char* dir_to_str(int d) {
+    switch (d) {
+        case 1: return "LEFT";
+        case 2: return "RIGHT";
+        case 3: return "STOP";
+        default: return "FORWARD";
+    }
+}
+
+// --- Comandos ADMIN requeridos ---
+static void handle_command_admin(struct client_data *data, const char *line) {
+    char buf[BUFFER_SIZE]; snprintf(buf, sizeof(buf), "%s", line);
+    trim_crlf(buf);
+
+    char up[BUFFER_SIZE]; snprintf(up, sizeof(up), "%s", buf);
+    to_upper(up);
+
+    // SPEED UP (ya existía conceptualmente)
+    if (strcmp(up, "SPEED UP")==0) {
+        speed_offset += 1.0f;
+        if (speed_offset < 0) speed_offset = 0;
+        send_line(data->socket_fd, "OK\n");
+        log_user_action(data->username, data->role, "SPEED UP", "speed_offset increased");
+        return;
+    }
+
+    // TURN LEFT (existente)
+    if (strcmp(up, "TURN LEFT")==0) {
+        direction_state = 1;
+        send_line(data->socket_fd, "OK\n");
+        log_user_action(data->username, data->role, "TURN LEFT", "direction changed to LEFT");
+        return;
+    }
+
+    // NUEVO: TURN RIGHT
+    if (strcmp(up, "TURN RIGHT")==0) {
+        direction_state = 2;
+        send_line(data->socket_fd, "OK\n");
+        log_user_action(data->username, data->role, "TURN RIGHT", "direction changed to RIGHT");
+        return;
+    }
+
+    // NUEVO: BATTERY RESET
+    if (strcmp(up, "BATTERY RESET")==0) {
+        battery_level = 100;
+        send_line(data->socket_fd, "OK\n");
+        log_user_action(data->username, data->role, "BATTERY RESET", "battery level reset to 100%");
+        return;
+    }
+
+    // NUEVO: STATUS
+    if (strcmp(up, "STATUS")==0) {
+        char out[128];
+        int speed_int = (int)(speed_offset); // modelo simple
+        snprintf(out, sizeof(out), "STATUS speed=%d battery=%d dir=%s temp=%d\n",
+                 speed_int, battery_level, dir_to_str(direction_state), temp_c);
+        send_line(data->socket_fd, out);
+        log_user_action(data->username, data->role, "STATUS", "requested vehicle status");
+        return;
+    }
+
+    send_line(data->socket_fd, "ERR unknown_cmd\n");
+}
+
+// Procesa UNA línea completa (sin \r\n) usando tu lógica existente
+static void process_line(struct client_data *data, const char *line_in) {
+    char buffer[BUFFER_SIZE];
+    snprintf(buffer, sizeof(buffer), "%s", line_in);
+    trim_crlf(buffer);
+
+    const int client_fd = data->socket_fd;
+
+    // ---- Fase de login ----
+    if (!data->authenticated) {
+        time_t now = time(NULL);
+        if (data->locked && (data->locked_until == 0 || now < data->locked_until)) {
+            send_line(client_fd, "ERR locked\n");
+            return;
+        } else if (data->locked && now >= data->locked_until) {
+            data->locked = 0;
+            data->failed_attempts = 0;
+        }
+
+        char role[16], user[64], pass[64];
+        if (!parse_login(buffer, role, sizeof(role), user, sizeof(user), pass, sizeof(pass))) {
+            send_line(client_fd, "ERR need_login\n");
+            return;
+        }
+
+        int ok = authenticate(role, user, pass);
+        if (!ok) {
+            data->failed_attempts++;
+            if (data->failed_attempts >= MAX_FAILED_ATTEMPTS) {
+                data->locked = 1;
+                data->locked_until = time(NULL) + LOCK_SECONDS;
+                send_line(client_fd, "ERR locked\n");
+            } else {
+                char msg[64];
+                snprintf(msg, sizeof(msg), "ERR invalid (%d/%d)\n", data->failed_attempts, MAX_FAILED_ATTEMPTS);
+                send_line(client_fd, msg);
+            }
+            return;
+        }
+
+        // Login OK
+        data->authenticated = 1;
+        snprintf(data->role, sizeof(data->role), "%s", role);
+        snprintf(data->username, sizeof(data->username), "%s", user);
+        send_line(client_fd, "OK\n");
+        
+        // Log successful authentication
+        char client_ip[INET_ADDRSTRLEN];
+        inet_ntop(AF_INET, &(data->addr.sin_addr), client_ip, INET_ADDRSTRLEN);
+        int client_port = ntohs(data->addr.sin_port);
+        log_connection_event("LOGIN_SUCCESS", user, role, client_ip, client_port);
+        return;
+    }
+
+    // ---- Fase autenticado ----
+    if (strcasecmp(data->role, "ADMIN")==0) {
+        handle_command_admin(data, buffer);
+        return;
+    }
+
+    // OBSERVER: permitir STATUS
+    if (strcasecmp(buffer, "STATUS")==0) {
+        char out[128];
+        int speed_int = (int)(speed_offset);
+        snprintf(out, sizeof(out), "STATUS speed=%d battery=%d dir=%s temp=%d\n",
+                 speed_int, battery_level, dir_to_str(direction_state), temp_c);
+        send_line(data->socket_fd, out);
+        log_user_action(data->username, data->role, "STATUS", "requested vehicle status");
+    } else {
+        send_line(client_fd, "ERR observer_only\n");
+    }
 }
 
 void *handle_client(void *arg) {
     struct client_data *data = (struct client_data *)arg;
-    int client_fd = data->socket_fd;
+    const int client_fd = data->socket_fd;
+    struct timeval timeout;
 
-    // Inicializar sesión
     data->authenticated = 0;
-    strcpy(data->role, "NONE");
-    strcpy(data->username, "");
+    data->active = 1;
+    data->failed_attempts = 0;
+    data->locked = 0;
+    data->locked_until = 0;
+    data->role[0] = 0;
+    data->username[0] = 0;
+    timeout.tv_sec = 120;
+    timeout.tv_usec = 0;
+    
+    setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout));
 
+    // Log initial connection
     char client_ip[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &(data->addr.sin_addr), client_ip, INET_ADDRSTRLEN);
     int client_port = ntohs(data->addr.sin_port);
+    log_connection_event("CONNECT", "unknown", "NONE", client_ip, client_port);
 
-    char buffer[BUFFER_SIZE];
-    log_event("Cliente conectado desde %s:%d\n", client_ip, client_port);
+    // Acumulador de entrada por líneas
+    char inbuf[4096];
+    size_t ilen = 0;
 
-    while (1) {
-        memset(buffer, 0, BUFFER_SIZE);
-        ssize_t bytes_received = recv(client_fd, buffer, BUFFER_SIZE - 1, 0);
-
-        if (bytes_received <= 0) {
-            log_event("Cliente %s:%d desconectado.\n", client_ip, client_port);
-            data->active = 0;
-            remove_client(data);
-
-            close(client_fd);
-            free(data);
-            return NULL;
+    while (data->active) {
+        char chunk[1024];
+        int n = recv(client_fd, chunk, sizeof(chunk), 0);
+        if (n == 0) {
+            // desconexión remota limpia
+            // (log y break como ya tienes)
+            break;
+        } else if (n < 0) {
+            // Timeout o error
+            if (errno == EAGAIN || errno == EWOULDBLOCK
+        #ifdef ETIMEDOUT
+                || errno == ETIMEDOUT
+        #endif
+            ) {
+                send_line(client_fd, "ERR timeout");
+                log_connection_event("TIMEOUT", data->username, data->role, client_ip, client_port);
+            } else {
+                perror("recv");
+                log_connection_event("RECV_ERROR", data->username, data->role, client_ip, client_port);
+            }
+            break;
         }
 
-        buffer[bytes_received] = '\0';
+        // Acumular el chunk recibido
+        if (ilen + (size_t)n >= sizeof(inbuf)) {
+            // evitar overflow: descartamos buffer si se desborda
+            ilen = 0;
+        }
+        memcpy(inbuf + ilen, chunk, (size_t)n);
+        ilen += (size_t)n;
 
-        log_event("[%s:%d] %s\n", client_ip, client_port, buffer);
+        // Extraer y procesar líneas completas (terminadas en '\n')
+        size_t start = 0;
+        for (size_t i = 0; i < ilen; ++i) {
+            if (inbuf[i] == '\n') {
+                size_t linelen = i - start;
+                if (linelen > 0) {
+                    char line[BUFFER_SIZE];
+                    size_t cplen = (linelen >= sizeof(line)-1) ? sizeof(line)-1 : linelen;
+                    memcpy(line, inbuf + start, cplen);
+                    line[cplen] = '\0';
 
-        // Procesar comando
-        if (strncmp(buffer, "LOGIN", 5) == 0) {
-            char role[16], username[32], password[64];
-            if (sscanf(buffer, "LOGIN %15s %31s %63s", role, username, password) == 3) {
-                if (check_credentials(username, role, password)) {
-                    data->authenticated = 1;
-                    strcpy(data->role, role);
-                    strcpy(data->username, username);
-                    send(client_fd, "200 OK\n", 7, 0);
-                    log_event("Usuario %s (%s) autenticado\n", username, role);
-                } else {
-                    send(client_fd, "401 UNAUTHORIZED\n", 17, 0);
-                    log_event("Fallo de login para %s (%s)\n", username, role);
+                    // Procesar UNA línea completa
+                    process_line(data, line);
                 }
-            } else {
-                send(client_fd, "400 BAD REQUEST\n", 16, 0);
+                start = i + 1;
             }
         }
-        else if (strncmp(buffer, "LOGOUT", 6) == 0) {
-            data->authenticated = 0;
-            strcpy(data->role, "NONE");
-            strcpy(data->username, "");
-            send(client_fd, "200 OK\n", 7, 0);
-            log_event("Cliente %s:%d cerró sesión\n", client_ip, client_port);
-        }
-        else if (strncmp(buffer, "CMD", 3) == 0) {
-            if (!data->authenticated) {
-                send(client_fd, "401 UNAUTHORIZED\n", 17, 0);
-                log_event("CMD rechazado: cliente no autenticado\n");
-            } else if (strcmp(data->role, "ADMIN") != 0) {
-                send(client_fd, "403 FORBIDDEN\n", 14, 0);
-                log_event("CMD rechazado: %s no es ADMIN\n", data->username);
-            } else {
-                char action[32];
-                if (sscanf(buffer, "CMD %31[^\n]", action) == 1) {
-                    // Efectos sobre variables globales
-                    if (strcasecmp(action, "SPEED UP") == 0) {
-                        speed_offset += 5;
-                    } else if (strcasecmp(action, "SLOW DOWN") == 0) {
-                        speed_offset -= 5;
-                    } else if (strcasecmp(action, "STOP") == 0) {
-                        speed_offset = 0;
-                    } else if (strcasecmp(action, "TURN LEFT") == 0) {
-                        direction_state = 1;
-                    } else if (strcasecmp(action, "TURN RIGHT") == 0) {
-                        direction_state = 2;
-                    } else if (strcasecmp(action, "FORWARD") == 0) {
-                        direction_state = 0;
-                    }
 
-                    char response[64];
-                    snprintf(response, sizeof(response), "200 OK CMD %s\n", action);
-                    send(client_fd, response, strlen(response), 0);
-                    log_event("CMD ejecutado por %s: %s\n", data->username, action);
-                } else {
-                    send(client_fd, "400 BAD REQUEST\n", 16, 0);
-                }
-            }
-        }
-        else {
-            if (!data->authenticated) {
-                send(client_fd, "401 UNAUTHORIZED\n", 17, 0);
-            } else {
-                // Por ahora solo eco si está autenticado
-                send(client_fd, buffer, bytes_received, 0);
-            }
+        // Mover remanente (fragmento incompleto) al inicio
+        if (start > 0) {
+            size_t rem = ilen - start;
+            memmove(inbuf, inbuf + start, rem);
+            ilen = rem;
         }
     }
 
+
+    // Mark client as inactive and remove from server list
+    data->active = 0;
+    remove_client(data);
+    
+    log_event("[CLIENT %d] Desconectado\n", client_fd);
     close(client_fd);
-    free(data); // liberar al final
+    free(data);
     return NULL;
 }
+
 
