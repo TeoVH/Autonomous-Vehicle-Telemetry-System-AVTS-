@@ -4,7 +4,7 @@ LDFLAGS  = -pthread
 
 SRV_OBJS = main.o server.o client_handler.o logger.o config.o
 SRV_BIN  = server
-LIBS     = -lcjson
+LIBS     = -lcrypto
 
 CLI_OBJS = test_client.o
 CLI_BIN  = test_client

@@ -41,9 +41,9 @@ static int parse_login(const char *line, char *role, size_t role_sz,
     for (char *p=cmd; *p; ++p) *p=(char)toupper(*p);
     if (strcmp(cmd, "LOGIN")!=0) return 0;
     for (char *p=rbuf; *p; ++p) *p=(char)toupper(*p);
-    strncpy(role, rbuf, role_sz-1); role[role_sz-1]=0;
-    strncpy(user, ubuf, user_sz-1); user[user_sz-1]=0;
-    strncpy(pass, pbuf, pass_sz-1); pass[pass_sz-1]=0;
+    snprintf(role, role_sz, "%s", rbuf);
+    snprintf(user, user_sz, "%s", ubuf);
+    snprintf(pass, pass_sz, "%s", pbuf);
     return 1;
 }
 
@@ -163,8 +163,8 @@ static void process_line(struct client_data *data, const char *line_in) {
 
         // Login OK
         data->authenticated = 1;
-        strncpy(data->role, role, sizeof(data->role)-1);
-        strncpy(data->username, user, sizeof(data->username)-1);
+        snprintf(data->role, sizeof(data->role), "%s", role);
+        snprintf(data->username, sizeof(data->username), "%s", user);
         send_line(client_fd, "OK\n");
         
         // Log successful authentication

@@ -68,17 +68,56 @@ During development, you can use **netcat (nc)** to test the protocol:
 nc 127.0.0.1 5050
 ```
 
-## 🔐 Authentication
+## 🔐 Authentication & Security
 
-### Login as Administrator:
+### **🔒 Secure Password Hashing**
+The system uses **SHA-256 + salt** for password security:
+- Passwords are never stored in plain text
+- Each user has a unique salt (64-character hex)
+- Passwords are hashed using `SHA-256(salt + password)`
+- Configuration stored in `config.json`
+
+### **👥 User Management**
+
+#### **Default Users (for testing):**
+- **ADMIN**: `root` / `password`
+- **OBSERVER**: `juan` / `12345`
+
+#### **Creating New Users:**
+```bash
+# Generate hash for new user
+python3 tools/hash_password.py --user newuser --role ADMIN --password 'newpassword'
+
+# Add to config.json
+{
+  "users": [
+    {
+      "role": "ADMIN",
+      "username": "newuser", 
+      "salt": "generated_salt_here",
+      "hash": "generated_hash_here"
+    }
+  ]
+}
+```
+
+#### **Generate Example Configuration:**
+```bash
+# Create config.json.example with default users
+python3 tools/hash_password.py --example > config.json.example
+
+# Copy to working config
+cp config.json.example config.json
+```
+
+### **🔑 Login Process**
+Clients still send plain text passwords (protocol unchanged):
 ```bash
 LOGIN ADMIN root password
-```
-
-### Login as Observer:
-```bash
 LOGIN OBSERVER juan 12345
 ```
+
+The server compares against stored hashes internally.
 
 ## 📡 Protocol Commands
 
@@ -147,8 +186,114 @@ The system provides comprehensive logging with three types of entries:
 
 ## 🔒 Security Features
 
-- **Login Attempt Limiting**: Account locked after 3 failed attempts for 5 minutes
-- **Role-based Access Control**: Different permissions for ADMIN vs OBSERVER
-- **Secure Authentication**: Username/password validation
-- **Connection Tracking**: All connections and disconnections logged
-- **Action Auditing**: Every user action is logged with timestamp and details
+- **🔐 Password Hashing**: SHA-256 + unique salt per user (no plain text storage)
+- **🚫 Login Attempt Limiting**: Account locked after 3 failed attempts for 5 minutes
+- **👥 Role-based Access Control**: Different permissions for ADMIN vs OBSERVER
+- **🔍 Secure Authentication**: Hash-based credential validation
+- **📊 Connection Tracking**: All connections and disconnections logged
+- **📝 Action Auditing**: Every user action is logged with timestamp and details
+- **🛡️ Salt Protection**: Unique salt prevents rainbow table attacks
+
+## 🛠️ Development Tools
+
+### **Password Hash Generator**
+Located in `tools/hash_password.py`:
+
+```bash
+# Generate hash for individual user
+python3 tools/hash_password.py --user username --role ADMIN --password 'password'
+
+# Generate example configuration with default users
+python3 tools/hash_password.py --example > config.json.example
+
+# Show JSON output only
+python3 tools/hash_password.py --user test --role OBSERVER --password 'secret' --json
+```
+
+### **Configuration Management**
+- **`config.json`**: Active server configuration (contains real hashes)
+- **`config.json.example`**: Template with example users (safe to commit)
+- **`tools/hash_password.py`**: Utility for generating secure password hashes
+
+### **Security Best Practices**
+1. **Never commit `config.json`** with real hashes to version control
+2. **Use `config.json.example`** as template for deployment
+3. **Generate unique salts** for each user
+4. **Use strong passwords** in production
+5. **Rotate credentials** regularly
+
+## 🚀 **Quick Start Guide**
+
+### **1. Setup & Build**
+```bash
+# Install dependencies
+sudo apt install build-essential libssl-dev
+
+# Generate example configuration
+python3 tools/hash_password.py --example > config.json.example
+
+# Build the server
+make clean && make
+```
+
+### **2. Run Server**
+```bash
+# Start server
+./server 5050 log.txt
+
+# Test connection
+nc 127.0.0.1 5050
+```
+
+### **3. Authentication**
+```bash
+# Login as ADMIN
+LOGIN ADMIN root password
+
+# Login as OBSERVER  
+LOGIN OBSERVER juan 12345
+
+# Test commands
+STATUS
+SPEED UP
+```
+
+## 📋 **Project Structure**
+```
+├── server.c              # Main server implementation
+├── client_handler.c       # Client connection handling
+├── config.c              # User authentication with hashing
+├── logger.c              # Logging system
+├── tools/
+│   └── hash_password.py  # Password hash generator
+├── config.json.example   # Example configuration
+└── README.md             # This file
+```
+
+## 🔧 **Development Workflow**
+
+### **Adding New Users**
+```bash
+# Generate hash for new user
+python3 tools/hash_password.py --user newuser --role ADMIN --password 'newpass' --json
+
+# Add to config.json (never commit this file)
+# Copy the generated JSON to your config.json
+```
+
+### **Testing Authentication**
+```bash
+# Test with netcat
+nc 127.0.0.1 5050
+LOGIN ADMIN root password
+STATUS
+```
+
+### **Viewing Logs**
+```bash
+# Real-time logs
+tail -f log.txt
+
+# Filter authentication events
+tail -f log.txt | grep -E "(LOGIN|USER_ACTION)"
+```

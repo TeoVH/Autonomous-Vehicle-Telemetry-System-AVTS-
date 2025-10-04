@@ -4,7 +4,8 @@
 struct user_entry {
     char role[16];
     char username[32];
-    char password[64];
+    char salt[65];      // 64 hex chars + null terminator
+    char hash[65];     // 64 hex chars + null terminator
 };
 
 int load_config(const char *filename);

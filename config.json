@@ -1,7 +1,16 @@
 {
   "users": [
-    { "role": "ADMIN", "username": "root", "password": "password" },
-    { "role": "OBSERVER", "username": "juan", "password": "12345" },
-    { "role": "OBSERVER", "username": "ana", "password": "abcd" }
+    {
+      "role": "ADMIN",
+      "username": "root",
+      "salt": "a4ddc9bc703991d5cdc2918965f68266025a418aaf980b0c206b21e63ae36cf6",
+      "hash": "1d06fd3b00656cc7f759eff82fd159265a4be10376e8db60bda127b079cb580d"
+    },
+    {
+      "role": "OBSERVER",
+      "username": "juan",
+      "salt": "e033ff8283b80a5df07b67f60ae0e66d7629a73646ea8e303bf77496790c6fef",
+      "hash": "6f2b77c83b5e61aac8b96ec27e325a20e2bc39200fc37eed985aebd052251323"
+    }
   ]
 }
