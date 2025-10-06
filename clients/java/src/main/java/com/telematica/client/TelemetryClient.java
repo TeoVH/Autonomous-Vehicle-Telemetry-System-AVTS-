@@ -25,6 +25,16 @@ public class TelemetryClient {
         this.host = host; this.port = port; this.role = role; this.user = user; this.pass = pass; this.listener = listener;
     }
 
+    public String getRole() {
+        return role;
+    }
+    public boolean isObserver() {
+        return role != null && role.equalsIgnoreCase("OBSERVER");
+    }
+    public boolean isAdmin() {
+        return role != null && role.equalsIgnoreCase("ADMIN");
+    }
+
     public boolean isConnected() { return socket != null && socket.isConnected() && !socket.isClosed(); }
 
     public void connectAsync() {
