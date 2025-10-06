@@ -11,3 +11,10 @@ target/
 # Build/OS
 *.swp
 Thumbs.db
+*.log
+
+# Logs específicos
+log.txt
+
+# Archivos compilados C/C++
+*.o

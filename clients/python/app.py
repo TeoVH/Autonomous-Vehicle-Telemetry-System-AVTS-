@@ -3,6 +3,8 @@ from tkinter import ttk, messagebox
 import threading
 import time
 from typing import Dict
+
+from networkx import center
 from telemetry_client import TelemetryClient
 
 APP_TITLE = "Telemática — Python Client (Tkinter)"
@@ -29,6 +31,8 @@ class App(tk.Tk):
         self.cmd_status_var = tk.StringVar(value="—")
 
         self.client: TelemetryClient | None = None
+        self.is_observer: bool = False
+        self.cmd_frame: ttk.Frame | None = None
         self._demo_thread: threading.Thread | None = None
         self._demo_stop = threading.Event()
 
@@ -67,6 +71,11 @@ class App(tk.Tk):
         center = ttk.Frame(self, padding=8)
         center.pack(side=tk.TOP, fill=tk.X)
 
+        # Título Status
+        ttk.Label(center, text="Status", font=("TkDefaultFont", 11, "bold")).pack(
+            side=tk.TOP, anchor="w", pady=(0, 6)
+        )
+
         # Telemetría
         grid = ttk.Frame(center)
         grid.pack(side=tk.TOP, fill=tk.X)
@@ -83,13 +92,13 @@ class App(tk.Tk):
         ttk.Label(grid, textvariable=self.temp_var, width=18).grid(row=1, column=3, sticky="w", padx=6, pady=6)
 
         # Botones de comandos
-        cmd = ttk.Frame(center)
-        cmd.pack(side=tk.TOP, fill=tk.X, pady=8)
+        self.cmd_frame = ttk.Frame(center)
+        self.cmd_frame.pack(side=tk.TOP, fill=tk.X, pady=8)
 
-        self.btn_start = ttk.Button(cmd, text="START (SPEED UP)", command=self._cmd_start)
-        self.btn_left = ttk.Button(cmd, text="TURN LEFT", command=lambda: self._send_wire("TURN LEFT"))
-        self.btn_right = ttk.Button(cmd, text="TURN RIGHT", command=lambda: self._send_wire("TURN RIGHT"))
-        self.btn_battery = ttk.Button(cmd, text="BATTERY RESET", command=lambda: self._send_wire("BATTERY RESET"))
+        self.btn_start = ttk.Button(self.cmd_frame, text="START (SPEED UP)", command=self._cmd_start)
+        self.btn_left = ttk.Button(self.cmd_frame, text="TURN LEFT", command=lambda: self._send_wire("TURN LEFT"))
+        self.btn_right = ttk.Button(self.cmd_frame, text="TURN RIGHT", command=lambda: self._send_wire("TURN RIGHT"))
+        self.btn_battery = ttk.Button(self.cmd_frame, text="BATTERY RESET", command=lambda: self._send_wire("BATTERY RESET"))
 
         for i, w in enumerate([self.btn_start, self.btn_left, self.btn_right, self.btn_battery]):
             w.grid(row=0, column=i, padx=6, pady=6, sticky="we")
@@ -122,13 +131,14 @@ class App(tk.Tk):
 
         if self.demo_var.get():
             self._append_log("Modo Demo: generando DATA cada 1s")
-            self._set_controls_enabled(True)
+            self._apply_role_ui(True)
             self._start_demo()
             return
 
         host = self.host_var.get().strip()
         port = int(self.port_var.get())
         role = self.role_var.get().strip()
+        self.is_observer = (role.upper() == "OBSERVER")
         user = self.user_var.get().strip()
         pwd  = self.pass_var.get()
 
@@ -147,7 +157,7 @@ class App(tk.Tk):
 
     def _on_login_result(self, ok: bool, line: str):
         self._append_log(f"LOGIN → {line}")
-        self._set_controls_enabled(ok)
+        self._apply_role_ui(ok)
         if not ok:
             self.btn_login.config(state=tk.NORMAL)
 
@@ -170,6 +180,29 @@ class App(tk.Tk):
         self._append_log("Conexión cerrada")
         self.btn_login.config(state=tk.NORMAL)
         self._set_controls_enabled(False)
+
+    def _apply_role_ui(self, logged_ok: bool):
+        
+        if not logged_ok:
+            self._set_controls_enabled(False)
+            if self.cmd_frame:
+                self.cmd_frame.pack_forget()
+            return
+
+        if self.is_observer:
+            
+            if self.cmd_frame:
+                self.cmd_frame.pack_forget()
+            
+            self._set_controls_enabled(False)
+            self._append_log("Rol OBSERVER: solo visualización de Status.")
+        else:
+            
+            if self.cmd_frame:
+                
+                self.cmd_frame.pack(side=tk.TOP, fill=tk.X, pady=8)
+            self._set_controls_enabled(True)
+
 
     # -------- Demo loop --------
     def _start_demo(self):
@@ -197,6 +230,9 @@ class App(tk.Tk):
 
     # -------- Envío de comandos --------
     def _cmd_start(self):
+        if self.is_observer:
+            self._append_log("Rol OBSERVER: comandos deshabilitados.")
+            return
         if self.demo_var.get():
             self.cmd_status_var.set("OK (demo)")
             self._append_log("CMD (demo): START → OK")
@@ -208,6 +244,9 @@ class App(tk.Tk):
         self._append_log("CMD: SPEED UP")
 
     def _send_wire(self, wire: str):
+        if self.is_observer:
+            self._append_log("Rol OBSERVER: comandos deshabilitados.")
+            return
         if self.demo_var.get():
             self.cmd_status_var.set("OK (demo)")
             self._append_log(f"CMD (demo): {wire} → OK")
