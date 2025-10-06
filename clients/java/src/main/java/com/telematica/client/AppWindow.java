@@ -127,6 +127,8 @@ public class AppWindow extends JFrame {
         }
         btnLogin.setEnabled(false);
 
+        setActionButtonsVisible(false); // ocultar mientras se hace login
+
         if (demoMode.isSelected()) {
             appendLog("Modo Demo: generando DATA cada 1s");
             setControlsEnabled(true);
@@ -228,6 +230,16 @@ public class AppWindow extends JFrame {
         btnTurnRight.setEnabled(enabled);
         btnBatteryReset.setEnabled(enabled);
     }
+
+    private void setActionButtonsVisible(boolean visible) {
+        btnStart.setVisible(visible);
+        btnTurnLeft.setVisible(visible);
+        btnTurnRight.setVisible(visible);
+        btnBatteryReset.setVisible(visible);
+        revalidate();
+        repaint();
+    }
+
 
     private void setCmdStatus(String s) { cmdStatusLbl.setText(s); }
 
