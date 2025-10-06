@@ -45,7 +45,11 @@ public class AppWindow extends JFrame {
         add(buildCenterPanel(), BorderLayout.CENTER);
         add(new JScrollPane(logArea), BorderLayout.SOUTH);
 
-        setControlsEnabled(false); // hasta que el login sea OK
+        // Controles deshabilitados hasta login OK,
+        // pero visibilidad inicial en TRUE (neutral)
+        setControlsEnabled(false);
+        setActionButtonsVisible(true);
+
         wireEvents();
     }
 
@@ -127,11 +131,10 @@ public class AppWindow extends JFrame {
         }
         btnLogin.setEnabled(false);
 
-        setActionButtonsVisible(false); // ocultar mientras se hace login
-
         if (demoMode.isSelected()) {
             appendLog("Modo Demo: generando DATA cada 1s");
             setControlsEnabled(true);
+            setActionButtonsVisible(true); // en demo siempre visibles
             startDemo();
             return;
         }
@@ -144,12 +147,30 @@ public class AppWindow extends JFrame {
 
         client = new TelemetryClient(host, port, role, user, pass, new TelemetryClient.Listener() {
             @Override public void onConnected() { appendLog("Conectado a " + host + ":" + port); }
+
             @Override public void onLoginResult(boolean ok, String line) {
                 appendLog("LOGIN → " + line);
                 setControlsEnabled(ok);
+
+                // Visibilidad SOLO según rol tras el login:
+                boolean isObserver = (client != null && client.isObserver());
+                setActionButtonsVisible(ok && !isObserver);
+
                 if (!ok) btnLogin.setEnabled(true);
             }
-            @Override public void onStatus(Map<String, String> kv) { updateStatus(kv); }
+
+            @Override public void onStatus(Map<String, String> kv) {
+                updateStatus(kv);
+
+                // Refuerzo: si llegó telemetría antes del OK, asegura visibilidad para ADMIN
+                if (client != null && client.isAdmin()) {
+                    if (!btnStart.isVisible()) {
+                        setActionButtonsVisible(true);
+                        setControlsEnabled(true);
+                    }
+                }
+            }
+
             @Override public void onServerMessage(String line) {
                 if (line == null || line.trim().isEmpty()) return; // filtra líneas vacías
                 appendLog("SRV: " + line);
@@ -157,15 +178,21 @@ public class AppWindow extends JFrame {
                 if (u.startsWith("OK")) setCmdStatus("OK");
                 else if (u.startsWith("ERR")) setCmdStatus("ERR");
             }
+
             @Override public void onError(String msg, Exception ex) {
                 appendLog("ERR: " + msg + (ex!=null?" — "+ex.getMessage():""));
                 btnLogin.setEnabled(true);
                 setControlsEnabled(false);
+                // Al fallar, vuelve a estado neutral (visibles) para nuevo intento
+                setActionButtonsVisible(true);
             }
+
             @Override public void onClosed() {
                 appendLog("Conexión cerrada");
                 btnLogin.setEnabled(true);
                 setControlsEnabled(false);
+                // Estado neutral al cerrar: visibles
+                setActionButtonsVisible(true);
             }
         });
 
@@ -239,7 +266,6 @@ public class AppWindow extends JFrame {
         revalidate();
         repaint();
     }
-
 
     private void setCmdStatus(String s) { cmdStatusLbl.setText(s); }
 

@@ -59,8 +59,12 @@ public class TelemetryClient {
                     SwingUtilities.invokeLater(() -> listener.onLoginResult(ok, f));
                 } else {
                     Map<String, String> kv = StatusParser.parse(first);
-                    SwingUtilities.invokeLater(() -> listener.onStatus(kv));
+                    SwingUtilities.invokeLater(() -> {
+                        listener.onStatus(kv);
+                        listener.onLoginResult(true, "OK (telemetry)");
+                    });
                 }
+
 
                 // Loop receptor
                 String line;
