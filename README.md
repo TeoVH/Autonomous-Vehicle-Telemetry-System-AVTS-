@@ -13,7 +13,7 @@ The system simulates an autonomous vehicle that:
 - **Manages user authentication** with role-based access control
 - **Logs all activities** for audit and debugging purposes
 
-## 🏗️ Architecture
+##  Architecture
 
 - **Server**: Implemented in C using Berkeley sockets and pthreads
 - **Protocol**: Custom text-based protocol with authentication and telemetry broadcast
@@ -21,7 +21,7 @@ The system simulates an autonomous vehicle that:
 - **Security**: Role-based authentication with login attempt limiting
 - **Logging**: Comprehensive audit trail with user action tracking
 
-## 👥 User Roles
+##  User Roles
 
 ### **Administrator (ADMIN)**
 - Can send control commands to the vehicle
@@ -35,7 +35,7 @@ The system simulates an autonomous vehicle that:
 - Read-only access to vehicle information
 - Commands: `STATUS` only
 
-## 🚀 Build & Run Instructions
+##  Build & Run Instructions
 
 ### 1. Build the server
 The server is written in C and requires `gcc`, `pthread`, and `libssl-dev`.  
@@ -68,16 +68,16 @@ During development, you can use **netcat (nc)** to test the protocol:
 nc 127.0.0.1 5050
 ```
 
-## 🔐 Authentication & Security
+##  Authentication & Security
 
-### **🔒 Secure Password Hashing**
+### ** Secure Password Hashing**
 The system uses **SHA-256 + salt** for password security:
 - Passwords are never stored in plain text
 - Each user has a unique salt (64-character hex)
 - Passwords are hashed using `SHA-256(salt + password)`
 - Configuration stored in `config.json`
 
-### **👥 User Management**
+### ** User Management**
 
 #### **Default Users (for testing):**
 - **ADMIN**: `root` / `password`
@@ -110,7 +110,7 @@ python3 tools/hash_password.py --example > config.json.example
 cp config.json.example config.json
 ```
 
-### **🔑 Login Process**
+### ** Login Process**
 Clients still send plain text passwords (protocol unchanged):
 ```bash
 LOGIN ADMIN root password
@@ -144,7 +144,7 @@ ERR observer_only\n # Observer tried to use admin command
 ERR unknown_cmd\n   # Unknown command
 ```
 
-## 📊 Telemetry Data Format
+##  Telemetry Data Format
 
 The server broadcasts telemetry data every 10 seconds in the format:
 ```
@@ -161,7 +161,7 @@ DATA 75.5 85 FORWARD 28.3
 - **direction**: FORWARD, LEFT, RIGHT
 - **temperature**: Temperature in Celsius (20-40°C simulated)
 
-## 📝 Logging System
+##  Logging System
 
 The system provides comprehensive logging with three types of entries:
 
@@ -184,15 +184,15 @@ The system provides comprehensive logging with three types of entries:
 [2025-09-28T12:31:10] Broadcast DATA: DATA 75.5 85 FORWARD 28.3
 ```
 
-## 🔒 Security Features
+##  Security Features
 
-- **🔐 Password Hashing**: SHA-256 + unique salt per user (no plain text storage)
-- **🚫 Login Attempt Limiting**: Account locked after 3 failed attempts for 5 minutes
-- **👥 Role-based Access Control**: Different permissions for ADMIN vs OBSERVER
-- **🔍 Secure Authentication**: Hash-based credential validation
-- **📊 Connection Tracking**: All connections and disconnections logged
-- **📝 Action Auditing**: Every user action is logged with timestamp and details
-- **🛡️ Salt Protection**: Unique salt prevents rainbow table attacks
+- ** Password Hashing**: SHA-256 + unique salt per user (no plain text storage)
+- ** Login Attempt Limiting**: Account locked after 3 failed attempts for 5 minutes
+- ** Role-based Access Control**: Different permissions for ADMIN vs OBSERVER
+- ** Secure Authentication**: Hash-based credential validation
+- ** Connection Tracking**: All connections and disconnections logged
+- ** Action Auditing**: Every user action is logged with timestamp and details
+- ** Salt Protection**: Unique salt prevents rainbow table attacks
 
 ## 🛠️ Development Tools
 
@@ -222,7 +222,7 @@ python3 tools/hash_password.py --user test --role OBSERVER --password 'secret' -
 4. **Use strong passwords** in production
 5. **Rotate credentials** regularly
 
-## 🚀 **Quick Start Guide**
+##  **Quick Start Guide**
 
 ### **1. Setup & Build**
 ```bash
@@ -258,7 +258,7 @@ STATUS
 SPEED UP
 ```
 
-## 📋 **Project Structure**
+##  **Project Structure**
 ```
 ├── server.c              # Main server implementation
 ├── client_handler.c       # Client connection handling
@@ -266,11 +266,14 @@ SPEED UP
 ├── logger.c              # Logging system
 ├── tools/
 │   └── hash_password.py  # Password hash generator
+├── clients/
+│   ├── java
+│   └── python
 ├── config.json.example   # Example configuration
 └── README.md             # This file
 ```
 
-## 🔧 **Development Workflow**
+##  **Development Workflow**
 
 ### **Adding New Users**
 ```bash
