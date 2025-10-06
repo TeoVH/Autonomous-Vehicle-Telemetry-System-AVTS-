@@ -1,6 +1,7 @@
 #include "client_handler.h"
 #include "logger.h"
 #include "server.h"
+#include "config.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -48,13 +49,8 @@ static int parse_login(const char *line, char *role, size_t role_sz,
 }
 
 static int authenticate(const char *role, const char *user, const char *pass) {
-    // TODO: Reemplaza con tu verificación real si la tienes (hash, db, etc.)
-    if (strcmp(role, "ADMIN")==0) {
-        return (strcmp(user,"root")==0 && strcmp(pass,"password")==0);
-    } else if (strcmp(role, "OBSERVER")==0) {
-        return (strcmp(user,"juan")==0 && strcmp(pass,"12345")==0);
-    }
-    return 0;
+    // Usar el sistema de hashing SHA-256 + salt implementado en config.c
+    return check_credentials(role, user, pass);
 }
 
 static const char* dir_to_str(int d) {
